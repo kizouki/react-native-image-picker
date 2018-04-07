@@ -51,6 +51,8 @@ import com.facebook.react.modules.core.PermissionListener;
 import static com.imagepicker.utils.MediaUtils.*;
 import static com.imagepicker.utils.MediaUtils.createNewFile;
 import static com.imagepicker.utils.MediaUtils.getResizedImage;
+import com.theartofdev.edmodo.cropper.CropImage;
+import com.theartofdev.edmodo.cropper.CropImageView;
 
 public class ImagePickerModule extends ReactContextBaseJavaModule
         implements ActivityEventListener
@@ -71,6 +73,7 @@ public class ImagePickerModule extends ReactContextBaseJavaModule
   protected Uri cameraCaptureURI;
   private Boolean noData = false;
   private Boolean pickVideo = false;
+  private Boolean editing = false;
   private ImageConfig imageConfig = new ImageConfig(null, null, 0, 0, 100, 0, false);
 
   @Deprecated
@@ -208,6 +211,7 @@ public class ImagePickerModule extends ReactContextBaseJavaModule
   @ReactMethod
   public void launchCamera(final ReadableMap options, final Callback callback)
   {
+    editing = true;
     if (!isCameraAvailable())
     {
       responseHelper.invokeError(callback, "Camera not available");
@@ -287,6 +291,7 @@ public class ImagePickerModule extends ReactContextBaseJavaModule
   @ReactMethod
   public void launchImageLibrary(final ReadableMap options, final Callback callback)
   {
+    editing = true;
     final Activity currentActivity = getCurrentActivity();
     if (currentActivity == null) {
       responseHelper.invokeError(callback, "can't find current Activity");
@@ -336,6 +341,16 @@ public class ImagePickerModule extends ReactContextBaseJavaModule
     }
   }
 
+  public void startCrop(Uri uri, int requestCode) {
+    final Activity currentActivity = getCurrentActivity();
+    Intent intent = CropImage.activity(uri)
+      .setCropShape(CropImageView.CropShape.OVAL)
+      .setAspectRatio(1,1)
+      .getIntent(currentActivity);
+    currentActivity.startActivityForResult(intent, requestCode);
+  }
+
+
   @Override
   public void onActivityResult(Activity activity, int requestCode, int resultCode, Intent data) {
     //robustness code
@@ -359,33 +374,50 @@ public class ImagePickerModule extends ReactContextBaseJavaModule
     switch (requestCode)
     {
       case REQUEST_LAUNCH_IMAGE_CAPTURE:
-        uri = cameraCaptureURI;
+        if (editing){
+          uri = cameraCaptureURI;
+          startCrop(uri,requestCode);
+          editing = false;
+          return;
+        } else {
+          uri = cameraCaptureURI;
+        }
         break;
 
       case REQUEST_LAUNCH_IMAGE_LIBRARY:
-        uri = data.getData();
-        String realPath = getRealPathFromURI(uri);
-        final boolean isUrl = !TextUtils.isEmpty(realPath) &&
-                Patterns.WEB_URL.matcher(realPath).matches();
-        if (realPath == null || isUrl)
-        {
-          try
+        String realPath;
+        if (editing){
+          uri = data.getData();
+          realPath = getRealPathFromURI(uri);
+          final boolean isUrl = !TextUtils.isEmpty(realPath) &&
+                  Patterns.WEB_URL.matcher(realPath).matches();
+          if (realPath == null || isUrl)
           {
-            File file = createFileFromURI(uri);
-            realPath = file.getAbsolutePath();
-            uri = Uri.fromFile(file);
+            try
+            {
+              File file = createFileFromURI(uri);
+              realPath = file.getAbsolutePath();
+              uri = Uri.fromFile(file);
+            }
+            catch (Exception e)
+            {
+              // image not in cache
+              responseHelper.putString("error", "Could not read photo");
+              responseHelper.putString("uri", uri.toString());
+              responseHelper.invokeResponse(callback);
+              callback = null;
+              return;
+            }
           }
-          catch (Exception e)
-          {
-            // image not in cache
-            responseHelper.putString("error", "Could not read photo");
-            responseHelper.putString("uri", uri.toString());
-            responseHelper.invokeResponse(callback);
-            callback = null;
-            return;
-          }
+          cameraCaptureURI = uri;
+          startCrop(uri,requestCode);
+          editing = false;
+          return;
+        }else{
+          uri = cameraCaptureURI;
+          realPath = getRealPathFromURI(uri);
+          imageConfig = imageConfig.withOriginalFile(new File(realPath));
         }
-        imageConfig = imageConfig.withOriginalFile(new File(realPath));
         break;
 
       case REQUEST_LAUNCH_VIDEO_LIBRARY:
