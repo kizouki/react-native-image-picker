@@ -371,6 +371,7 @@ public class ImagePickerModule extends ReactContextBaseJavaModule
     }
 
     Uri uri = null;
+    String realPath;
     switch (requestCode)
     {
       case REQUEST_LAUNCH_IMAGE_CAPTURE:
@@ -380,12 +381,14 @@ public class ImagePickerModule extends ReactContextBaseJavaModule
           editing = false;
           return;
         } else {
-          uri = cameraCaptureURI;
+          CropImage.ActivityResult res = CropImage.getActivityResult(data);
+          uri = res.getUri();
+          realPath = getRealPathFromURI(uri);
+          imageConfig = imageConfig.withOriginalFile(new File(realPath));
         }
         break;
 
       case REQUEST_LAUNCH_IMAGE_LIBRARY:
-        String realPath;
         if (editing){
           uri = data.getData();
           realPath = getRealPathFromURI(uri);
@@ -402,7 +405,7 @@ public class ImagePickerModule extends ReactContextBaseJavaModule
             catch (Exception e)
             {
               // image not in cache
-              responseHelper.putString("error", "Could not read photo");
+              responseHelper.putString("error","Could not read photo");
               responseHelper.putString("uri", uri.toString());
               responseHelper.invokeResponse(callback);
               callback = null;
@@ -414,7 +417,8 @@ public class ImagePickerModule extends ReactContextBaseJavaModule
           editing = false;
           return;
         }else{
-          uri = cameraCaptureURI;
+          CropImage.ActivityResult res = CropImage.getActivityResult(data);
+          uri = res.getUri();
           realPath = getRealPathFromURI(uri);
           imageConfig = imageConfig.withOriginalFile(new File(realPath));
         }
